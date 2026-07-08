@@ -11,7 +11,7 @@ Läuft ohne Installation – einfach die HTML-Datei doppelklicken und loslegen.
 - **localStorage** – Alle Daten bleiben im Browser erhalten, auch nach dem Neuladen
 - **Portabel** – Eine einzige HTML-Datei (~31 KB), keine Installation, kein Server
 - **Export/Import** – Einzelne Seiten als `.md`-Datei, alle Seiten in einen Ordner (File System API) oder als Einzel-Downloads
-- **Tastaturkürzel** – `Strg+S` speichern, `Strg+B` für **fett**, `Strg+I` für *kursiv*
+- **Tastaturkürzel** – `Strg+S` speichern, `Strg+B` für **fett**, `Strg+I` für _kursiv_
 - **Wiki-Links** – `[[Seitenname]]` erzeugt einen internen Link
 - **Responsive** – Funktioniert auf Desktop und Mobilgeräten
 
@@ -35,22 +35,23 @@ Alles steckt in einer einzigen Datei. Keine Abhängigkeiten, keine Build-Tools.
 
 ## Technische Details
 
-| Komponente | Beschreibung |
-|---|---|
-| **Sprache** | Vanilla JavaScript (kein Framework) |
-| **Speicher** | localStorage (ca. 5 MB Speicherplatz – ausreichend für 100+ Seiten) |
+| Komponente   | Beschreibung                                                                                                   |
+| ------------ | -------------------------------------------------------------------------------------------------------------- |
+| **Sprache**  | Vanilla JavaScript (kein Framework)                                                                            |
+| **Speicher** | localStorage (ca. 5 MB Speicherplatz – ausreichend für 100+ Seiten)                                            |
 | **Markdown** | Eigener Parser (unterstützt: Überschriften, Bold/Italic, Links, Bilder, Listen, Blockquotes, Code, Wiki-Links) |
-| **Größe** | ~31 KB (unminifiziert) |
-| **Browser** | Chrome, Firefox, Edge, Safari – alle modernen Browser |
-| **Export** | File System Access API (Chromium) + Fallback auf Downloads |
+| **Größe**    | ~31 KB (unminifiziert)                                                                                         |
+| **Browser**  | Chrome, Firefox, Edge, Safari – alle modernen Browser                                                          |
+| **Export**   | File System Access API (Chromium) + Fallback auf Downloads                                                     |
 
 ### Markdown-Syntax (unterstützt)
 
-```markdown
+````markdown
 # Überschrift 1
+
 ## Überschrift 2
 
-**fetter Text** und *kursiver Text*
+**fetter Text** und _kursiver Text_
 
 - Ungeordnete Liste
 - Noch ein Punkt
@@ -65,11 +66,11 @@ Alles steckt in einer einzigen Datei. Keine Abhängigkeiten, keine Build-Tools.
 
 `inline code`
 
-```code block```
+`code block`
 
-[[Interner Link]]  → verlinkt auf eine andere Wiki-Seite
-[[Text|seite]]     → Link mit anderem Anzeigetext
-```
+[[Interner Link]] → verlinkt auf eine andere Wiki-Seite
+[[Text|seite]] → Link mit anderem Anzeigetext
+````
 
 ## Exportieren
 
@@ -83,6 +84,7 @@ Die Export-Funktionen findest du in den **Einstellungen** (⚙):
 ## Migration von Feather Wiki
 
 Falls du bisher Feather Wiki verwendet hast:
+
 1. Exportiere deine Seiten aus Feather Wiki (als `.md`-Dateien)
 2. Importiere sie in Mein Wiki über **Einstellungen → 📂 .md importieren**
 3. Fertig!
