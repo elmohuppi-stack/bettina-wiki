@@ -55,6 +55,22 @@
     a:hover {
       text-decoration: underline;
     }
+    a.wl {
+      border-bottom: 1px dotted var(--link);
+    }
+    a.wl::before {
+      content: "📄 ";
+      font-size: 0.8em;
+    }
+    a.wl:hover::after {
+      content: " (Wiki-Seite)";
+      font-size: 0.7em;
+      color: var(--muted);
+    }
+    a[href^="http"]::after {
+      content: " ↗";
+      font-size: 0.7em;
+    }
     button {
       cursor: pointer;
       font: inherit;
@@ -340,6 +356,47 @@
       font-size: 0.8rem;
       color: var(--muted);
       margin-left: auto;
+    }
+    /* Editor Toolbar */
+    #ed-tb {
+      display: flex;
+      gap: 2px;
+      flex-wrap: wrap;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--bd);
+      margin-bottom: 0;
+    }
+    #ed-tb button {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 3px 7px;
+      font-size: 0.85rem;
+      line-height: 1.2;
+      color: var(--color);
+      white-space: nowrap;
+    }
+    #ed-tb button:hover {
+      background: rgba(0, 0, 0, 0.06);
+      border-color: var(--bd);
+    }
+    #ed-tb button:active {
+      background: rgba(0, 0, 0, 0.1);
+    }
+    #ed-tb .tb-s {
+      border-left: 1px solid var(--bd);
+      width: 0;
+      padding: 0;
+      margin: 2px 3px;
+      height: 1.2rem;
+    }
+    #ed-tb .tb-lbl {
+      font-size: 0.65rem;
+      color: var(--muted);
+      padding: 3px 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
 
     /* Status bar */
@@ -694,12 +751,16 @@
         (_, text, href, title) =>
           `<a href="${href}"${title ? ` title="${title}"` : ""}>${text}</a>`,
       );
-      // Wiki links [[Seite]] or [[text|seite]]
+      // Wiki links [[Seite]] or [[text|seite]] — slugify + class for styling
       t = t.replace(
         /\[\[([^\]|]+)\|([^\]]+)\]\]/g,
-        '<a href="?page=$2">$1</a>',
+        (_, text, page) =>
+          `<a href="?page=${slugify(page)}" class=wl>${text}</a>`,
       );
-      t = t.replace(/\[\[([^\]]+)\]\]/g, '<a href="?page=$1">$1</a>');
+      t = t.replace(
+        /\[\[([^\]]+)\]\]/g,
+        (_, text) => `<a href="?page=${slugify(text)}" class=wl>${text}</a>`,
+      );
       // Horizontal rules
       t = t.replace(/^(?:[-*_]){3,}\s*$/gm, "<hr>");
       // Unordered lists
@@ -841,12 +902,26 @@
         renderAllPages(el);
         return;
       }
-      const p = A.p.find((x) => x.slug === slug);
+      const slugLc = slug.toLowerCase();
+      const p = A.p.find((x) => x.slug.toLowerCase() === slugLc);
       if (!p) {
         const title = slug
           .replace(/_/g, " ")
           .replace(/\b\w/g, (c) => c.toUpperCase());
-        el.innerHTML = `<header><h1>Seite nicht gefunden</h1></header><div class=empty><p>Die Seite "${esc(slug)}" existiert nicht.</p><button class="btn btn-p" onclick="nav('?edit=${encodeURIComponent(slug)}&title=${encodeURIComponent(title)}')">Seite anlegen</button></div>`;
+        const mo = document.createElement("div");
+        mo.id = "mo";
+        mo.innerHTML = `<div><h3>Seite nicht gefunden</h3><p>Die Seite "${esc(title)}" existiert noch nicht.</p><div class=mo-b><button class="btn btn-o" onclick="this.closest('#mo').remove();nav('?')">Abbrechen</button><button class="btn btn-p" id=mo-c>Seite anlegen</button></div></div>`;
+        document.body.appendChild(mo);
+        document.getElementById("mo-c").onclick = () => {
+          mo.remove();
+          nav(
+            "?edit=" +
+              encodeURIComponent(slug) +
+              "&title=" +
+              encodeURIComponent(title),
+          );
+        };
+        el.innerHTML = `<header><h1>Seite nicht gefunden</h1></header><div class=empty><p>Die Seite "${esc(slug)}" existiert nicht.</p></div>`;
         document.title = "404 | " + A.m.title;
         return;
       }
@@ -858,7 +933,8 @@
 
     function renderEditor(el, slug) {
       const qp = Object.fromEntries(new URLSearchParams(location.search));
-      const isNew = !slug || !A.p.find((x) => x.slug === slug);
+      const isNew =
+        !slug || !A.p.find((x) => x.slug.toLowerCase() === slug.toLowerCase());
       const p = isNew
         ? {
             title:
@@ -872,7 +948,7 @@
             content: "",
             id: "",
           }
-        : A.p.find((x) => x.slug === slug);
+        : A.p.find((x) => x.slug.toLowerCase() === slug.toLowerCase());
       if (!A.edits || A.edits.id !== p.id)
         A.edits = {
           id: p.id,
@@ -895,6 +971,27 @@
     <span style=flex:1></span>
     <button class="btn btn-s btn-sm" onclick="savePage()">💾 Speichern</button>
     <button class="btn btn-o btn-sm" onclick="nav('?page=${encodeURIComponent(p.slug || "")}')">Abbrechen</button>
+  </div>
+  <div id=ed-tb>
+    <button onclick="fm('bold')" title="Fett (Ctrl+B)"><b>B</b></button>
+    <button onclick="fm('italic')" title="Kursiv (Ctrl+I)"><i>I</i></button>
+    <button onclick="fm('strike')" title="Durchgestrichen"><s>S</s></button>
+    <span class=tb-s></span>
+    <button onclick="fm('h1')" title="Überschrift 1">H1</button>
+    <button onclick="fm('h2')" title="Überschrift 2">H2</button>
+    <button onclick="fm('h3')" title="Überschrift 3">H3</button>
+    <span class=tb-s></span>
+    <button onclick="fm('ul')" title="Aufzählung">•</button>
+    <button onclick="fm('ol')" title="Nummerierte Liste">1.</button>
+    <button onclick="fm('quote')" title="Zitat">❞</button>
+    <button onclick="fm('hr')" title="Trennlinie">—</button>
+    <span class=tb-s></span>
+    <button onclick="fm('code')" title="Inline-Code">&lt;/&gt;</button>
+    <button onclick="fm('pre')" title="Code-Block">▣</button>
+    <span class=tb-s></span>
+    <button onclick="fm('link')" title="Link">🔗</button>
+    <button onclick="fm('img')" title="Bild">🖼</button>
+    <button onclick="fm('wlink')" title="Wiki-Link [[Seite]]">⫧</button>
   </div>
   <div id=ed-s><textarea id=ed-ta placeholder="Markdown hier eingeben…" oninput="edC(this.value)">${esc(p.content)}</textarea><div id=ed-p style="${A.ed.showPreview ? "" : "display:none"}">${p.content ? md(p.content) : "<p class=empty>Vorschau</p>"}</div></div>`;
 
@@ -919,6 +1016,88 @@
           ta.style.whiteSpace === "pre" ? "pre-wrap" : "pre";
         document.getElementById("ed-w").style.background =
           ta.style.whiteSpace === "pre" ? "rgba(0,0,0,.05)" : "transparent";
+      }
+    }
+
+    // Format helper for toolbar buttons
+    function fm(type) {
+      const ta = document.getElementById("ed-ta");
+      if (!ta) return;
+      const s = ta.selectionStart,
+        e = ta.selectionEnd;
+      const sel = ta.value.slice(s, e);
+      const pre = ta.value.slice(0, s),
+        post = ta.value.slice(e);
+      const ins = (before, after, placeholder) => {
+        const txt = sel || placeholder;
+        ta.value = pre + before + txt + after + post;
+        const p = s + before.length;
+        ta.selectionStart = p;
+        ta.selectionEnd = p + txt.length;
+        ta.focus();
+        ta.dispatchEvent(new Event("input"));
+      };
+      const ln = (prefix, placeholder) => {
+        const txt = sel || placeholder;
+        const before = pre.endsWith("\n") || pre === "" ? "" : "\n";
+        const after = post.startsWith("\n") || post === "" ? "" : "\n";
+        ta.value = pre + before + prefix + txt + after + post;
+        const p = s + before.length + prefix.length;
+        ta.selectionStart = p;
+        ta.selectionEnd = p + txt.length;
+        ta.focus();
+        ta.dispatchEvent(new Event("input"));
+      };
+      switch (type) {
+        case "bold":
+          ins("**", "**", "fetter Text");
+          break;
+        case "italic":
+          ins("*", "*", "kursiver Text");
+          break;
+        case "strike":
+          ins("~~", "~~", "durchgestrichen");
+          break;
+        case "code":
+          ins("`", "`", "code");
+          break;
+        case "pre":
+          ins("```\n", "\n```", "code");
+          break;
+        case "h1":
+          ln("# ", "Überschrift");
+          break;
+        case "h2":
+          ln("## ", "Überschrift");
+          break;
+        case "h3":
+          ln("### ", "Überschrift");
+          break;
+        case "ul":
+          ln("- ", "Listenpunkt");
+          break;
+        case "ol":
+          ln("1. ", "Listenpunkt");
+          break;
+        case "quote":
+          ln("> ", "Zitat");
+          break;
+        case "hr":
+          ins("", "", "\n---\n");
+          ta.value = pre + "\n---\n" + post;
+          ta.selectionStart = ta.selectionEnd = s + 5;
+          ta.focus();
+          ta.dispatchEvent(new Event("input"));
+          break;
+        case "link":
+          ins("[", "](https://)", "Linktext");
+          break;
+        case "img":
+          ins("![](", ")", "Bild-URL");
+          break;
+        case "wlink":
+          ins("[[", "]]", "Seitenname");
+          break;
       }
     }
 
@@ -1221,35 +1400,23 @@
 
     // Keyboard shortcuts
     document.addEventListener("keydown", (e) => {
+      const inEditor =
+        document.activeElement && document.activeElement.id === "ed-ta";
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
         if (A.edits) savePage();
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === "b") {
-        if (document.activeElement && document.activeElement.id === "ed-ta") {
-          e.preventDefault();
-          const ta = document.getElementById("ed-ta");
-          const { selectionStart: s, selectionEnd: e2 } = ta;
-          const txt = ta.value;
-          ta.value =
-            txt.slice(0, s) + "**" + txt.slice(s, e2) + "**" + txt.slice(e2);
-          ta.selectionStart = s + 2;
-          ta.selectionEnd = e2 + 2;
-          ta.dispatchEvent(new Event("input"));
-        }
+      if ((e.ctrlKey || e.metaKey) && e.key === "b" && inEditor) {
+        e.preventDefault();
+        fm("bold");
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === "i") {
-        if (document.activeElement && document.activeElement.id === "ed-ta") {
-          e.preventDefault();
-          const ta = document.getElementById("ed-ta");
-          const { selectionStart: s, selectionEnd: e2 } = ta;
-          const txt = ta.value;
-          ta.value =
-            txt.slice(0, s) + "*" + txt.slice(s, e2) + "*" + txt.slice(e2);
-          ta.selectionStart = s + 1;
-          ta.selectionEnd = e2 + 1;
-          ta.dispatchEvent(new Event("input"));
-        }
+      if ((e.ctrlKey || e.metaKey) && e.key === "i" && inEditor) {
+        e.preventDefault();
+        fm("italic");
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "k" && inEditor) {
+        e.preventDefault();
+        fm("link");
       }
     });
 
