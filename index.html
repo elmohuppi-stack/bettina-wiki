@@ -3,6 +3,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title id="title">Mein Wiki</title>
+  <link
+    rel="icon"
+    type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%232563eb'/%3E%3Ctext x='50' y='70' font-size='65' font-weight='700' font-family='system-ui,sans-serif' text-anchor='middle' fill='white'%3EB%3C/text%3E%3C/svg%3E"
+  />
 
   <style>
     :root {
@@ -198,6 +203,29 @@
     #main li {
       margin: 0.25rem 0;
     }
+    #main li.t {
+      list-style: none;
+      margin-left: -1.5rem;
+    }
+    #main li.t input[type="checkbox"] {
+      width: auto;
+      margin-right: 0.4rem;
+    }
+    #main table {
+      border-collapse: collapse;
+      margin: 0.5rem 0;
+      width: 100%;
+    }
+    #main th,
+    #main td {
+      border: 1px solid var(--bd);
+      padding: 6px 10px;
+      text-align: left;
+    }
+    #main th {
+      background: var(--sb-bg);
+      font-weight: 600;
+    }
     #main blockquote {
       border-left: 3px solid var(--link);
       padding: 0.25rem 1rem;
@@ -362,9 +390,14 @@
       display: flex;
       gap: 2px;
       flex-wrap: wrap;
-      padding: 4px 0;
+      padding: 6px 0;
       border-bottom: 1px solid var(--bd);
       margin-bottom: 0;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: var(--bg);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
     }
     #ed-tb button {
       background: transparent;
@@ -469,6 +502,21 @@
     #set textarea {
       min-height: 80px;
       resize: vertical;
+    }
+    #set .imp {
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--bd);
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    #set .imp a {
+      color: var(--muted);
+      text-decoration: underline;
+    }
+    #set .imp a:hover {
+      color: var(--link);
     }
 
     /* Empty state */
@@ -782,6 +830,42 @@
       t = t.replace(/<\/ol>\s*<\/ul>/g, "</ul>");
       t = t.replace(/<ol>\s*<ul>/g, "<ol>");
       t = t.replace(/<\/ul>\s*<\/ol>/g, "</ol>");
+      // Tables — convert | ... | ... | to HTML table
+      t = t.replace(/^\|(.+)\|$/gm, (m) => {
+        const cells = m
+          .slice(1, -1)
+          .split("|")
+          .map((c) => c.trim());
+        return "<tr><td>" + cells.join("</td><td>") + "</td></tr>";
+      });
+      t = t.replace(/(<tr>.*<\/tr>\n?)+/g, (m) => {
+        // Check if first row is a header (contains ---)
+        const lines = m.trim().split("\n");
+        let header = "";
+        let body = m;
+        if (lines.length > 1 && /^<tr><td>-{3,}/.test(lines[1])) {
+          header = lines[0];
+          body = lines.slice(2).join("\n");
+          header = header.replace(/<td>/g, "<th>").replace(/<\/td>/g, "<\/th>");
+          return (
+            "<table><thead>" +
+            header +
+            "</thead><tbody>" +
+            body +
+            "</tbody></table>"
+          );
+        }
+        return "<table>" + m + "</table>";
+      });
+      // Task lists: - [ ] and - [x]
+      t = t.replace(
+        /<li>\[ \] /g,
+        "<li class=t><input type=checkbox disabled> ",
+      );
+      t = t.replace(
+        /<li>\[x\] /g,
+        "<li class=t><input type=checkbox disabled checked> ",
+      );
       // Inline code
       t = t.replace(/`([^`]+)`/g, "<code>$1</code>");
       // Paragraphs — wrap remaining text blocks
@@ -975,7 +1059,7 @@
   <div id=ed-tb>
     <button onclick="fm('bold')" title="Fett (Ctrl+B)"><b>B</b></button>
     <button onclick="fm('italic')" title="Kursiv (Ctrl+I)"><i>I</i></button>
-    <button onclick="fm('strike')" title="Durchgestrichen"><s>S</s></button>
+    <button onclick="fm('code')" title="Code (Ctrl+\`)">&lt;/&gt;</button>
     <span class=tb-s></span>
     <button onclick="fm('h1')" title="Überschrift 1">H1</button>
     <button onclick="fm('h2')" title="Überschrift 2">H2</button>
@@ -983,10 +1067,11 @@
     <span class=tb-s></span>
     <button onclick="fm('ul')" title="Aufzählung">•</button>
     <button onclick="fm('ol')" title="Nummerierte Liste">1.</button>
+    <button onclick="fm('task')" title="Checkbox">☐</button>
     <button onclick="fm('quote')" title="Zitat">❞</button>
     <button onclick="fm('hr')" title="Trennlinie">—</button>
+    <button onclick="fm('table')" title="Tabelle">⊞</button>
     <span class=tb-s></span>
-    <button onclick="fm('code')" title="Inline-Code">&lt;/&gt;</button>
     <button onclick="fm('pre')" title="Code-Block">▣</button>
     <span class=tb-s></span>
     <button onclick="fm('link')" title="Link">🔗</button>
@@ -1055,9 +1140,6 @@
         case "italic":
           ins("*", "*", "kursiver Text");
           break;
-        case "strike":
-          ins("~~", "~~", "durchgestrichen");
-          break;
         case "code":
           ins("`", "`", "code");
           break;
@@ -1097,6 +1179,25 @@
           break;
         case "wlink":
           ins("[[", "]]", "Seitenname");
+          break;
+        case "task":
+          ln("- [ ] ", "Aufgabe");
+          break;
+        case "table":
+          ins(
+            "",
+            "",
+            "\n| Spalte 1 | Spalte 2 |\n|----------|----------|\n| Zelle    | Zelle    |",
+          );
+          ta.value =
+            pre +
+            "\n| Spalte 1 | Spalte 2 |\n|----------|----------|\n| Zelle    | Zelle    |" +
+            post;
+          const tp = s + 1;
+          ta.selectionStart = tp;
+          ta.selectionEnd = tp;
+          ta.focus();
+          ta.dispatchEvent(new Event("input"));
           break;
       }
     }
@@ -1192,6 +1293,10 @@
     <button class="btn btn-o btn-sm" onclick="expAllZip()">📦 Alle exportieren (.zip)</button>
     <button class="btn btn-o btn-sm" onclick="expAllDir()">📁 In Ordner exportieren</button>
     <button class="btn btn-o btn-sm" onclick="impFiles()">📂 .md importieren</button>
+  </div>
+  <div class=imp>
+    <strong>Version 1.0.0</strong> &middot; erstellt mit ♥ von <strong>Elmar</strong> für <strong>Bettina</strong><br>
+    <a href="https://github.com/elmohuppi-stack/bettina-wiki" target=_blank>github.com/elmohuppi-stack/bettina-wiki</a>
   </div></div>`;
     }
 
@@ -1446,6 +1551,89 @@
     function init() {
       A.p = ST.getAllPages();
       A.m = ST.getMeta();
+      // Beim ersten Start eine Hilfeseite anlegen
+      if (A.p.length === 0) {
+        const help = {
+          id: "p_help",
+          title: "📖 Hilfe & Bedienung",
+          slug: "hilfe",
+          content: `# 📖 Hilfe & Bedienung
+
+Willkommen beim **Bettina Wiki**! Diese Seite erklärt dir die wichtigsten Funktionen.
+
+---
+
+## ➕ Seiten erstellen
+
+Klicke unten in der Seitenleiste auf **+ Neue Seite**.
+Gib einen **Titel** und optional einen **Slug** (URL-Name) ein.
+Schreibe den Inhalt in **Markdown** – die Vorschau rechts zeigt live, wie es später aussieht.
+Klicke auf **💾 Speichern**.
+
+## ✏️ Seiten bearbeiten
+
+Auf jeder Seite gibt es oben rechts den **✏️ Bearbeiten**-Button.
+Auch in der Seitenliste kannst du über den ✏️-Button direkt in den Editor springen.
+
+## 🔗 Wiki-Links
+
+Mit \`[[Seitenname]]\` erzeugst du einen internen Link zu einer anderen Wiki-Seite.
+Mit \`[[Text|seite]]\` kannst du einen abweichenden Anzeigetext festlegen.
+
+Noch nicht existierende Seiten werden beim Anklicken automatisch zur Neuanlage angeboten.
+
+## 🔍 Suchen
+
+Das Suchfeld in der Seitenleiste durchsucht **Titel und Inhalt** aller Seiten.
+Treffer werden mit gelbem Hintergrund hervorgehoben.
+Die Suche startet automatisch 300 ms nach dem letzten Tastendruck.
+
+## ⌨️ Tastaturkürzel
+
+| Kürzel           | Aktion                 |
+| ---------------- | ---------------------- |
+| \`Strg+S\`       | Seite speichern        |
+| \`Strg+B\`       | **Fett**               |
+| \`Strg+I\`       | *Kursiv*               |
+| \`Strg+K\`       | Link einfügen          |
+
+Alle Kürzel funktionieren nur, wenn der Fokus im Editor ist.
+
+## 🎨 Formatierungsleiste
+
+Im Editor findest du eine **Toolbar** mit Buttons für:
+**Fett**, *Kursiv*, Code, Überschriften (H1–H3), Listen, Checkboxen, Zitate, Trennlinien, Tabellen, Code-Blöcke, Links, Bilder und Wiki-Links.
+
+Die Toolbar bleibt beim Scrollen **am oberen Rand kleben** – so hast du sie immer griffbereit.
+
+## 📥 Export / 📤 Import
+
+In den **Einstellungen** (⚙) findest du:
+
+- **📥 .md** – Einzelne Seite als Markdown-Datei herunterladen
+- **📦 Alle exportieren** – Alle Seiten als einzelne Downloads
+- **📁 In Ordner exportieren** – In einen lokalen Ordner speichern (Chromium)
+- **📂 .md importieren** – Eine oder mehrere \`.md\`-Dateien importieren
+
+## ⚙️ Einstellungen
+
+Über den ⚙-Button in der Seitenleiste erreichst du die Einstellungen.
+Dort kannst du **Titel** und **Beschreibung** des Wikis ändern.
+
+## 💾 Autosave
+
+Der Editor speichert **automatisch 800 ms** nach der letzten Eingabe.
+Zusätzlich warnt dich der Browser, wenn du die Seite mit ungespeicherten Änderungen verlassen willst.
+
+---
+
+Viel Spaß mit deinem Wiki! 🎉`,
+          created: Date.now(),
+          updated: Date.now(),
+        };
+        A.p.push(help);
+        ST.putPage(help);
+      }
       document.getElementById("title").textContent = A.m.title;
       document.getElementById("wt").textContent = A.m.title;
       render();
