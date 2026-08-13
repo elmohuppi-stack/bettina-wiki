@@ -168,6 +168,98 @@
       border-radius: var(--btn-r);
     }
 
+    /* Storage status pill (sidebar) */
+    #fss {
+      flex: 1 0 100%;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      padding: 2px 0;
+      cursor: pointer;
+      background: 0 0;
+      border: 0;
+      text-align: left;
+    }
+    #fss .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+      background: var(--muted);
+    }
+    #fss.s-ok .dot {
+      background: var(--ok);
+    }
+    #fss.s-warn .dot {
+      background: #f59e0b;
+    }
+    #fss.s-err .dot {
+      background: var(--err);
+    }
+    #fss .txt {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Storage warning banner (top of main) */
+    #fsb {
+      border: 1px solid #f59e0b;
+      background: #fffbeb;
+      color: #78350f;
+      border-radius: var(--btn-r);
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    #fsb.b-err {
+      border-color: var(--err);
+      background: #fef2f2;
+      color: #7f1d1d;
+    }
+    #fsb strong {
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    #fsb .b-a {
+      margin-top: 0.6rem;
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    /* Settings: storage block */
+    #set .fs-box {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      border: 1px solid var(--bd);
+      border-radius: var(--btn-r);
+      background: var(--sb-bg);
+    }
+    #set .fs-box h3 {
+      font-size: 1rem;
+      margin: 0 0 0.5rem;
+    }
+    #set .fs-box p {
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.6;
+      margin: 0 0 0.5rem;
+    }
+    #set .fs-box code {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+    }
+    #set .fs-box .fs-a {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 0.75rem;
+    }
+
     /* Main content */
     #main {
       flex: 1;
@@ -651,6 +743,9 @@
     <footer>
       <button id="bn">+ Neue Seite</button>
       <button id="bs">⚙ Einstellungen</button>
+      <button id="fss" type="button" title="Speicher-Status">
+        <span class="dot"></span><span class="txt">Speicher wird geprüft…</span>
+      </button>
     </footer>
   </div>
 
@@ -679,38 +774,366 @@
     })();
 
     // ═══════════════════════════════════════════
-    // LIB: Storage (localStorage — works with file://)
+    // LIB: Storage
+    //   Primär   : JSON-Datei in einem vom Nutzer gewählten Ordner
+    //              (File System Access API — Chromium/Edge)
+    //   Sekundär : localStorage als schneller Cache + Fallback
+    //
+    // Warum: localStorage allein ist an die Browser-Origin gebunden.
+    // Bei file:// kann schon ein anderer Pfad/Laufwerksbuchstabe, ein
+    // zurückgesetztes Windows-Profil (RDP!) oder "Browserdaten löschen"
+    // alle Daten unsichtbar machen. Eine echte Datei auf der Platte
+    // übersteht das — und lässt sich sichern und kopieren.
     // ═══════════════════════════════════════════
+    const FS_OK = typeof window.showDirectoryPicker === "function";
+    const DATA_FILE = "wiki-data.json";
+    const BACKUP_DIR = "backups";
+    const BACKUP_KEEP = 14;
+    const DEF_META = { title: "Mein Wiki", description: "" };
+
+    // Merkt sich den Ordner-Handle über Sitzungen hinweg (nur IndexedDB
+    // kann FileSystemHandles speichern, localStorage kann das nicht).
+    const HDB = {
+      _p: null,
+      _open() {
+        if (!this._p)
+          this._p = Promise.race([
+            new Promise((res, rej) => {
+              const r = indexedDB.open("wiki_fs", 1);
+              r.onupgradeneeded = () => r.result.createObjectStore("h");
+              r.onsuccess = () => res(r.result);
+              r.onerror = () => rej(r.error);
+              r.onblocked = () => rej(new Error("blocked"));
+            }),
+            // IndexedDB kann unter file:// in manchen Profilen weder
+            // success noch error feuern und würde ewig hängen.
+            new Promise((res) => setTimeout(() => res(null), 3000)),
+          ]).catch(() => null);
+        return this._p;
+      },
+      async get(k) {
+        const db = await this._open();
+        if (!db) return null;
+        return new Promise((res) => {
+          try {
+            const q = db.transaction("h", "readonly").objectStore("h").get(k);
+            q.onsuccess = () => res(q.result || null);
+            q.onerror = () => res(null);
+          } catch (e) {
+            res(null);
+          }
+        });
+      },
+      async set(k, v) {
+        const db = await this._open();
+        if (!db) return;
+        return new Promise((res) => {
+          try {
+            const q = db
+              .transaction("h", "readwrite")
+              .objectStore("h")
+              .put(v, k);
+            q.onsuccess = q.onerror = () => res();
+          } catch (e) {
+            res();
+          }
+        });
+      },
+      async del(k) {
+        const db = await this._open();
+        if (!db) return;
+        return new Promise((res) => {
+          try {
+            const q = db
+              .transaction("h", "readwrite")
+              .objectStore("h")
+              .delete(k);
+            q.onsuccess = q.onerror = () => res();
+          } catch (e) {
+            res();
+          }
+        });
+      },
+    };
+
     const ST = {
-      _pages: null,
-      _meta: null,
+      _pages: [],
+      _meta: { ...DEF_META },
       KEY: "wiki_data",
-      load() {
+      dir: null, // FileSystemDirectoryHandle, wenn verbunden
+      pending: null, // Handle, der noch eine Freigabe per Klick braucht
+      state: "warn", // ok | warn | err — für Statusanzeige
+      note: "", // Klartext für Statusanzeige
+      _wTm: null,
+      _writing: false,
+      _again: false,
+      _bkDay: null,
+
+      // ---- Serialisierung -------------------------------------------
+      snapshot() {
+        return {
+          version: 2,
+          savedAt: Date.now(),
+          meta: this._meta,
+          pages: this._pages,
+        };
+      },
+      // Mutiert in-place, damit Referenzen (A.p / A.m) gültig bleiben.
+      _apply(d) {
+        const pages = Array.isArray(d && d.pages) ? d.pages : [];
+        this._pages.length = 0;
+        this._pages.push(...pages);
+        Object.assign(this._meta, DEF_META, (d && d.meta) || {});
+      },
+
+      // ---- localStorage ---------------------------------------------
+      _readLocal() {
         try {
           const raw = localStorage.getItem(this.KEY);
-          if (raw) {
-            const d = JSON.parse(raw);
-            this._pages = d.pages || [];
-            this._meta = d.meta || { title: "Mein Wiki", description: "" };
-          } else {
-            this._pages = [];
-            this._meta = { title: "Mein Wiki", description: "" };
-          }
+          return raw ? JSON.parse(raw) : null;
         } catch (e) {
-          this._pages = [];
-          this._meta = { title: "Mein Wiki", description: "" };
+          return null;
         }
+      },
+      _writeLocal(snap) {
+        try {
+          localStorage.setItem(this.KEY, JSON.stringify(snap));
+          return true;
+        } catch (e) {
+          console.error("localStorage", e);
+          return false;
+        }
+      },
+
+      // ---- Datei ----------------------------------------------------
+      async _readFile(dir) {
+        try {
+          const fh = await dir.getFileHandle(DATA_FILE);
+          const txt = await (await fh.getFile()).text();
+          return txt.trim() ? JSON.parse(txt) : null;
+        } catch (e) {
+          // NotFoundError = Datei gibt es noch nicht → kein Fehler
+          if (e.name !== "NotFoundError") console.error("readFile", e);
+          return null;
+        }
+      },
+      async _writeFile() {
+        if (!this.dir) return;
+        if (this._writing) {
+          this._again = true;
+          return;
+        }
+        this._writing = true;
+        try {
+          const json = JSON.stringify(this.snapshot(), null, 2);
+          // Chrome schreibt in eine Swap-Datei und benennt bei close()
+          // atomar um — ein Abbruch mittendrin zerstört die alte Datei nicht.
+          const fh = await this.dir.getFileHandle(DATA_FILE, { create: true });
+          const w = await fh.createWritable();
+          await w.write(json);
+          await w.close();
+          await this._backup(json);
+          this.setState("ok", this.dir.name + "/" + DATA_FILE);
+        } catch (e) {
+          console.error("writeFile", e);
+          this.setState(
+            "err",
+            "Datei nicht schreibbar: " + (e.message || e.name),
+          );
+        } finally {
+          this._writing = false;
+          if (this._again) {
+            this._again = false;
+            this._writeFile();
+          }
+        }
+      },
+      // Eine Sicherung pro Tag — bewusst beim ersten Speichern der
+      // Sitzung, damit sie den Stand *vor* heutigen Änderungen festhält.
+      async _backup(json) {
+        const day = new Date().toISOString().slice(0, 10);
+        if (this._bkDay === day) return;
+        try {
+          const bd = await this.dir.getDirectoryHandle(BACKUP_DIR, {
+            create: true,
+          });
+          const fh = await bd.getFileHandle("wiki-" + day + ".json", {
+            create: true,
+          });
+          const w = await fh.createWritable();
+          await w.write(json);
+          await w.close();
+          this._bkDay = day;
+          // Alte Sicherungen aufräumen (ISO-Datum → alphabetisch = chronologisch)
+          const names = [];
+          for await (const n of bd.keys())
+            if (/^wiki-\d{4}-\d{2}-\d{2}\.json$/.test(n)) names.push(n);
+          names.sort();
+          for (const n of names.slice(0, Math.max(0, names.length - BACKUP_KEEP)))
+            await bd.removeEntry(n).catch(() => {});
+        } catch (e) {
+          console.error("backup", e);
+        }
+      },
+
+      // ---- Verbinden ------------------------------------------------
+      // Vergleicht Datei- und Browser-Stand. Im Normalfall gewinnt der
+      // neuere. Würde der Browser-Stand aber Seiten aus der Datei
+      // wegwerfen, wird vorher gefragt — und die Datei in jedem Fall
+      // zuerst weggesichert.
+      async _attach(dir) {
+        this.dir = dir;
+        this.pending = null;
+        const local = this._readLocal();
+        const file = await this._readFile(dir);
+        const lT = (local && local.savedAt) || 0;
+        const fT = (file && file.savedAt) || 0;
+        const lN = (local && local.pages && local.pages.length) || 0;
+        const fN = (file && file.pages && file.pages.length) || 0;
+
+        let useFile = !!file && (fT >= lT || lN === 0);
+        // Der Browser-Stand ist zwar neuer, hätte aber weniger Seiten:
+        // das ist genau das Muster eines geleerten Browser-Speichers.
+        if (file && !useFile && fN > lN) {
+          useFile = confirm(
+            `Unterschiedliche Stände gefunden:\n\n` +
+              `• Datei ${DATA_FILE}: ${fN} Seiten (${fT ? date(fT) : "unbekannt"})\n` +
+              `• Browser-Speicher: ${lN} Seiten (${lT ? date(lT) : "unbekannt"})\n\n` +
+              `Den Stand aus der DATEI verwenden? (empfohlen — er hat mehr Seiten)\n` +
+              `Abbrechen behält den Browser-Stand.`,
+          );
+        }
+
+        if (useFile) {
+          this._apply(file);
+          this._writeLocal(this.snapshot());
+          this.setState("ok", dir.name + "/" + DATA_FILE);
+          noti(`Datenordner verbunden — ${fN} Seiten aus ${DATA_FILE}`, "ok");
+        } else {
+          // Bestehende Datei zuerst wegsichern, bevor sie ersetzt wird.
+          if (file) await this._snapshotFile(dir, file);
+          if (local) this._apply(local);
+          await this._writeFile();
+          noti(
+            file
+              ? `Datenordner verbunden — ${lN} Seiten aus dem Browser übernommen, der vorherige Dateistand liegt in ${BACKUP_DIR}/`
+              : `Datenordner verbunden — ${lN} Seiten in ${DATA_FILE} gesichert`,
+            "ok",
+            6000,
+          );
+        }
+        EE.emit("reload");
+      },
+      // Sicherheitskopie des Dateistands, bevor er überschrieben wird
+      async _snapshotFile(dir, snap) {
+        try {
+          const bd = await dir.getDirectoryHandle(BACKUP_DIR, { create: true });
+          const name =
+            "vor-ueberschreiben-" +
+            new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19) +
+            ".json";
+          const fh = await bd.getFileHandle(name, { create: true });
+          const w = await fh.createWritable();
+          await w.write(JSON.stringify(snap, null, 2));
+          await w.close();
+        } catch (e) {
+          console.error("snapshotFile", e);
+        }
+      },
+
+      async connect() {
+        if (!FS_OK)
+          return noti(
+            "Dieser Browser unterstützt keinen Datei-Speicher. Bitte Microsoft Edge oder Google Chrome verwenden.",
+            "err",
+            6000,
+          );
+        try {
+          const dir = await window.showDirectoryPicker({
+            id: "wikiData",
+            mode: "readwrite",
+          });
+          await HDB.set("dir", dir);
+          await this._attach(dir);
+        } catch (e) {
+          if (e.name !== "AbortError")
+            noti("Ordner konnte nicht verbunden werden: " + e.message, "err");
+        }
+      },
+      // Nach Browser-Neustart ist der Handle da, aber die Freigabe muss
+      // per Klick erneuert werden (Browser-Sicherheitsregel).
+      async reconnect() {
+        const dir = this.pending || (await HDB.get("dir"));
+        if (!dir) return this.connect();
+        try {
+          const p = await dir.requestPermission({ mode: "readwrite" });
+          if (p !== "granted")
+            return noti("Zugriff auf den Datenordner verweigert", "err");
+          await this._attach(dir);
+        } catch (e) {
+          noti("Zugriff fehlgeschlagen: " + e.message, "err");
+        }
+      },
+      async disconnect() {
+        await HDB.del("dir");
+        this.dir = null;
+        this.pending = null;
+        this.setState("warn", "");
+        noti("Datenordner getrennt — es wird nur noch im Browser gespeichert", "info");
+        EE.emit("reload");
+      },
+
+      // ---- Start ----------------------------------------------------
+      // Bewusst zweigeteilt: der synchrone Teil reicht, um die App
+      // anzuzeigen. Das Anbinden der Datei läuft danach im Hintergrund —
+      // so bleibt das Wiki auch dann bedienbar, wenn der Ordner weg ist
+      // oder IndexedDB klemmt.
+      bootLocal() {
+        this._apply(this._readLocal() || {});
         return this;
       },
-      save() {
+      async bootFile() {
         try {
-          localStorage.setItem(
-            this.KEY,
-            JSON.stringify({ pages: this._pages, meta: this._meta }),
-          );
+          if (!FS_OK)
+            return this.setState(
+              "warn",
+              "Browser ohne Datei-Speicher (Edge/Chrome empfohlen)",
+            );
+          const dir = await HDB.get("dir");
+          if (!dir) return this.setState("warn", "Kein Datenordner verbunden");
+          const p = await dir.queryPermission({ mode: "readwrite" });
+          if (p === "granted") await this._attach(dir);
+          else {
+            this.pending = dir;
+            this.setState("warn", "Datenordner „" + dir.name + "“ freigeben");
+            render();
+          }
         } catch (e) {
-          console.error("save", e);
+          console.error("bootFile", e);
+          this.setState("warn", "Datenordner nicht erreichbar");
+          render();
         }
+      },
+
+      setState(s, note) {
+        this.state = s;
+        this.note = note || "";
+        renderFsStatus();
+      },
+
+      // ---- API (unverändert für den Rest der App) -------------------
+      save() {
+        const snap = this.snapshot();
+        this._writeLocal(snap);
+        if (this.dir) {
+          clearTimeout(this._wTm);
+          this._wTm = setTimeout(() => this._writeFile(), 400);
+        }
+      },
+      async flush() {
+        clearTimeout(this._wTm);
+        this._writeLocal(this.snapshot());
+        if (this.dir) await this._writeFile();
       },
       getAllPages() {
         return this._pages;
@@ -726,18 +1149,97 @@
         this.save();
       },
       delPage(id) {
-        this._pages = this._pages.filter((x) => x.id !== id);
+        const i = this._pages.findIndex((x) => x.id === id);
+        if (i > -1) this._pages.splice(i, 1);
         this.save();
       },
       getMeta() {
         return this._meta;
       },
       putMeta(v) {
-        this._meta = v;
+        if (v !== this._meta) Object.assign(this._meta, v);
         this.save();
       },
     };
-    ST.load();
+
+    // ═══════════════════════════════════════════
+    // APP: Speicher-Statusanzeige & Warnbanner
+    // ═══════════════════════════════════════════
+    function renderFsStatus() {
+      const el = document.getElementById("fss");
+      if (!el) return;
+      const label =
+        ST.state === "ok"
+          ? "Datei-Speicher: " + ST.note
+          : ST.state === "err"
+            ? ST.note
+            : ST.note || "Nur Browser-Speicher";
+      el.className = "s-" + ST.state;
+      el.querySelector(".txt").textContent = label;
+      el.title =
+        ST.state === "ok"
+          ? "Daten werden in " + ST.note + " gespeichert. Klicken für Einstellungen."
+          : "Achtung: Daten liegen nur im Browser. Klicken, um einen Datenordner zu verbinden.";
+    }
+
+    // Banner oben im Inhalt, solange kein Datei-Speicher aktiv ist.
+    function fsBannerHtml() {
+      if (ST.state === "ok") return "";
+      if (ST.state === "err")
+        return `<div id=fsb class=b-err><strong>⚠️ Datenordner nicht schreibbar</strong>
+    ${esc(ST.note)}<br>Deine Änderungen liegen momentan nur im Browser.
+    <div class=b-a><button class="btn btn-sm" onclick="ST.reconnect()">🔌 Erneut verbinden</button>
+    <button class="btn btn-o btn-sm" onclick="expJson()">💾 Sicherung herunterladen</button></div></div>`;
+      if (ST.pending)
+        return `<div id=fsb><strong>🔌 Datenordner freigeben</strong>
+    Der Browser braucht nach dem Neustart einmal deine Bestätigung für den Ordner
+    „${esc(ST.pending.name)}“. Bis dahin wird nur im Browser gespeichert.
+    <div class=b-a><button class="btn btn-sm" onclick="ST.reconnect()">Jetzt freigeben</button></div></div>`;
+      if (!FS_OK)
+        return `<div id=fsb><strong>⚠️ Nur Browser-Speicher</strong>
+    Dieser Browser kann nicht direkt in Dateien schreiben. Deine Seiten liegen ausschließlich
+    im Browser-Speicher und können bei „Browserdaten löschen“ verloren gehen.
+    Bitte regelmäßig sichern — oder Microsoft Edge / Google Chrome verwenden.
+    <div class=b-a><button class="btn btn-sm" onclick="expJson()">💾 Sicherung herunterladen</button></div></div>`;
+      return `<div id=fsb><strong>⚠️ Noch kein Datenordner verbunden</strong>
+    Deine Seiten liegen nur im Browser-Speicher. Der kann verloren gehen — etwa
+    durch „Browserdaten löschen“, ein zurückgesetztes Windows-Profil oder wenn diese
+    Datei von einem anderen Pfad geöffnet wird. Verbinde einen Ordner, dann liegen
+    alle Daten in einer echten Datei (<code>${DATA_FILE}</code>) samt täglicher Sicherung.
+    <div class=b-a><button class="btn btn-sm" onclick="ST.connect()">📁 Datenordner wählen</button>
+    <button class="btn btn-o btn-sm" onclick="expJson()">💾 Sicherung herunterladen</button></div></div>`;
+    }
+
+    // Ausführlicher Speicher-Block für die Einstellungsseite
+    function storageBoxHtml() {
+      if (!FS_OK)
+        return `<div class=fs-box><h3>💾 Speicherort</h3>
+    <p><strong>Nur Browser-Speicher.</strong> Dieser Browser unterstützt das direkte
+    Schreiben in Dateien nicht. Bitte regelmäßig eine vollständige Sicherung
+    herunterladen — oder das Wiki in Microsoft Edge bzw. Google Chrome öffnen,
+    dort können die Daten dauerhaft in einer Datei liegen.</p></div>`;
+      if (ST.state === "ok")
+        return `<div class=fs-box><h3>💾 Speicherort</h3>
+    <p>Aktiv: <code>${esc(ST.note)}</code></p>
+    <p>Jede Änderung wird in diese Datei geschrieben. Im Unterordner
+    <code>${BACKUP_DIR}/</code> liegt zusätzlich pro Tag eine Sicherung
+    (die letzten ${BACKUP_KEEP} werden behalten). Der Browser-Speicher läuft
+    parallel als Zwischenspeicher weiter.</p>
+    <div class=fs-a>
+      <button class="btn btn-o btn-sm" onclick="ST.connect()">📁 Anderen Ordner wählen</button>
+      <button class="btn btn-o btn-sm" onclick="ST.flush().then(()=>noti('In Datei geschrieben','ok'))">⤓ Jetzt schreiben</button>
+      <button class="btn btn-o btn-sm" onclick="ST.disconnect()">✕ Trennen</button>
+    </div></div>`;
+      return `<div class=fs-box><h3>💾 Speicherort</h3>
+    <p><strong>Kein Datenordner verbunden</strong> — die Seiten liegen nur im
+    Browser-Speicher. Wähle einen Ordner (am besten in OneDrive o.ä., dann gibt es
+    zusätzlich Versionierung), dann schreibt das Wiki alle Daten in
+    <code>${DATA_FILE}</code> und legt täglich eine Sicherung in
+    <code>${BACKUP_DIR}/</code> ab.</p>
+    <div class=fs-a>
+      <button class="btn btn-p btn-sm" onclick="${ST.pending ? "ST.reconnect()" : "ST.connect()"}">📁 Datenordner ${ST.pending ? "freigeben" : "wählen"}</button>
+    </div></div>`;
+    }
 
     // ═══════════════════════════════════════════
     // LIB: Markdown Parser
@@ -941,6 +1443,11 @@
       else if (q.search !== void 0) renderSearch(main, q.search);
       else if (q.page !== void 0) renderPage(main, q.page);
       else renderAllPages(main);
+      // Speicher-Warnung immer ganz oben — die Einstellungen haben ihren
+      // eigenen, ausführlicheren Block.
+      const b = q.settings === void 0 ? fsBannerHtml() : "";
+      if (b) main.insertAdjacentHTML("afterbegin", b);
+      renderFsStatus();
     }
 
     function renderPageList(el) {
@@ -1274,7 +1781,7 @@
       document.body.appendChild(mo);
       document.getElementById("mo-c").onclick = () => {
         ST.delPage(id);
-        A.p = A.p.filter((x) => x.id !== id);
+        A.p = ST.getAllPages();
         mo.remove();
         noti("Gelöscht: " + p.title, "info");
         nav("?");
@@ -1289,10 +1796,20 @@
   <div style=margin-top:1.5rem;display:flex;gap:.5rem;flex-wrap:wrap>
     <button class="btn btn-p" onclick="saveSettings()">💾 Speichern</button>
     <button class="btn btn-o" onclick="nav('?')">Abbrechen</button>
-    <span style=flex:1></span>
-    <button class="btn btn-o btn-sm" onclick="expAllZip()">📦 Alle exportieren (.zip)</button>
-    <button class="btn btn-o btn-sm" onclick="expAllDir()">📁 In Ordner exportieren</button>
-    <button class="btn btn-o btn-sm" onclick="impFiles()">📂 .md importieren</button>
+  </div>
+  ${storageBoxHtml()}
+  <div class=fs-box>
+    <h3>📤 Export &amp; Import</h3>
+    <p>Markdown-Export für einzelne Seiten oder alles auf einmal. Die vollständige
+    Sicherung als <code>.json</code> enthält alle Seiten <em>und</em> Einstellungen und
+    kann jederzeit wieder eingelesen werden.</p>
+    <div class=fs-a>
+      <button class="btn btn-o btn-sm" onclick="expJson()">💾 Vollständige Sicherung (.json)</button>
+      <button class="btn btn-o btn-sm" onclick="impJson()">♻️ Sicherung wiederherstellen</button>
+      <button class="btn btn-o btn-sm" onclick="expAllZip()">📦 Alle exportieren (.md)</button>
+      <button class="btn btn-o btn-sm" onclick="expAllDir()">📁 In Ordner exportieren</button>
+      <button class="btn btn-o btn-sm" onclick="impFiles()">📂 .md importieren</button>
+    </div>
   </div>
   <div class=imp>
     <strong>Version 1.0.0</strong> &middot; erstellt mit ♥ von <strong>Elmar</strong> für <strong>Bettina</strong><br>
@@ -1377,6 +1894,59 @@
       a.click();
       URL.revokeObjectURL(url);
       noti("Exportiert: " + p.slug + ".md", "ok");
+    }
+
+    // Vollständige Sicherung: alle Seiten + Einstellungen in einer Datei.
+    // Funktioniert in jedem Browser und ist das universelle Sicherheitsnetz.
+    function expJson() {
+      const snap = ST.snapshot();
+      const blob = new Blob([JSON.stringify(snap, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download =
+        "wiki-sicherung-" + new Date().toISOString().slice(0, 10) + ".json";
+      a.click();
+      URL.revokeObjectURL(url);
+      noti(`Sicherung mit ${snap.pages.length} Seiten heruntergeladen`, "ok");
+    }
+
+    function impJson() {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".json";
+      input.onchange = async () => {
+        const file = input.files[0];
+        if (!file) return;
+        let snap;
+        try {
+          snap = JSON.parse(await file.text());
+        } catch (e) {
+          return noti("Datei ist kein gültiges JSON", "err");
+        }
+        if (!Array.isArray(snap.pages))
+          return noti("Datei enthält keine Wiki-Sicherung", "err");
+        const cur = A.p.length;
+        const when = snap.savedAt ? date(snap.savedAt) : "unbekannt";
+        if (
+          !confirm(
+            `Sicherung mit ${snap.pages.length} Seiten (Stand: ${when}) einlesen?\n\n` +
+              `Die aktuellen ${cur} Seiten werden dabei ersetzt.`,
+          )
+        )
+          return;
+        ST._apply(snap);
+        ST.save();
+        A.p = ST.getAllPages();
+        A.m = ST.getMeta();
+        document.getElementById("title").textContent = A.m.title;
+        document.getElementById("wt").textContent = A.m.title;
+        noti(snap.pages.length + " Seiten wiederhergestellt", "ok");
+        nav("?");
+      };
+      input.click();
     }
 
     async function expAllZip() {
@@ -1465,11 +2035,11 @@
               created: Date.now(),
               updated: Date.now(),
             };
-            A.p.push(page);
             ST.putPage(page);
           }
           count++;
         }
+        A.p = ST.getAllPages();
         noti(count + " Seiten importiert", "ok");
         render();
       };
@@ -1533,6 +2103,14 @@
       }
     });
 
+    // Ausstehendes Schreiben abschließen, bevor der Tab in den Hintergrund
+    // geht oder geschlossen wird — "hidden" ist der letzte Zeitpunkt, an dem
+    // asynchrone Arbeit noch zuverlässig durchläuft.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") ST.flush();
+    });
+    window.addEventListener("pagehide", () => ST.flush());
+
     // ═══════════════════════════════════════════
     // Sidebar buttons
     // ═══════════════════════════════════════════
@@ -1543,16 +2121,49 @@
       document
         .getElementById("bs")
         .addEventListener("click", () => nav("?settings"));
+      // Statusanzeige: verbinden bzw. freigeben direkt per Klick
+      document.getElementById("fss").addEventListener("click", () => {
+        if (ST.state === "ok") nav("?settings");
+        else if (ST.pending) ST.reconnect();
+        else ST.connect();
+      });
+      renderFsStatus();
+    });
+
+    // Nach dem Verbinden/Trennen sind _pages/_meta neu befüllt → neu aufbauen
+    EE.on("reload", () => {
+      A.p = ST.getAllPages();
+      A.m = ST.getMeta();
+      const t = document.getElementById("title");
+      if (t) t.textContent = A.m.title;
+      const w = document.getElementById("wt");
+      if (w) w.textContent = A.m.title;
+      render();
+      seedHelp(); // falls der frisch verbundene Ordner noch leer war
     });
 
     // ═══════════════════════════════════════════
     // INIT
     // ═══════════════════════════════════════════
     function init() {
+      ST.bootLocal();
       A.p = ST.getAllPages();
       A.m = ST.getMeta();
-      // Beim ersten Start eine Hilfeseite anlegen
-      if (A.p.length === 0) {
+      document.getElementById("title").textContent = A.m.title;
+      document.getElementById("wt").textContent = A.m.title;
+      render();
+      // Datei-Speicher im Hintergrund anbinden; erst danach entscheiden,
+      // ob wirklich noch nichts da ist — sonst würde die Hilfeseite einen
+      // vorhandenen Dateistand als "neuer" verdrängen.
+      ST.bootFile().then(seedHelp, seedHelp);
+    }
+
+    // Beim allerersten Start eine Hilfeseite anlegen. Nicht, solange ein
+    // Datenordner noch auf seine Freigabe wartet — dort liegen womöglich
+    // schon Seiten, die sonst mit der Hilfeseite kollidieren würden.
+    function seedHelp() {
+      if (ST.getAllPages().length || ST.pending) return;
+      {
         const help = {
           id: "p_help",
           title: "📖 Hilfe & Bedienung",
@@ -1625,18 +2236,41 @@ Dort kannst du **Titel** und **Beschreibung** des Wikis ändern.
 Der Editor speichert **automatisch 800 ms** nach der letzten Eingabe.
 Zusätzlich warnt dich der Browser, wenn du die Seite mit ungespeicherten Änderungen verlassen willst.
 
+## 🔒 Wo liegen meine Daten? (wichtig!)
+
+Ohne Datenordner liegen alle Seiten **nur im Browser-Speicher**. Der kann
+verschwinden – durch „Browserdaten löschen", ein zurückgesetztes Windows-Profil
+(z.B. bei Remote-Desktop) oder wenn diese Datei von einem anderen Pfad
+geöffnet wird.
+
+Deshalb: **einmalig einen Datenordner verbinden.**
+Einstellungen (⚙) → **📁 Datenordner wählen**. Danach schreibt das Wiki alles in
+eine echte Datei \`wiki-data.json\` und legt im Unterordner \`backups/\` täglich
+eine Sicherung an.
+
+Am besten einen Ordner in **OneDrive** o.ä. wählen – dann gibt es zusätzlich
+Versionierung und eine Kopie in der Cloud.
+
+Links unten in der Seitenleiste zeigt ein Punkt den Status:
+🟢 Datei-Speicher aktiv · 🟡 nur Browser-Speicher (Klick verbindet den Ordner).
+
+Nach einem Browser-Neustart fragt der Browser aus Sicherheitsgründen einmal
+nach – ein Klick auf **Jetzt freigeben** genügt.
+
+Zusätzlich gibt es in den Einstellungen **💾 Vollständige Sicherung (.json)** –
+eine einzelne Datei mit allen Seiten und Einstellungen, die sich über
+**♻️ Sicherung wiederherstellen** jederzeit wieder einlesen lässt.
+
 ---
 
 Viel Spaß mit deinem Wiki! 🎉`,
           created: Date.now(),
           updated: Date.now(),
         };
-        A.p.push(help);
         ST.putPage(help);
+        A.p = ST.getAllPages();
+        render();
       }
-      document.getElementById("title").textContent = A.m.title;
-      document.getElementById("wt").textContent = A.m.title;
-      render();
     }
     init();
   </script>
