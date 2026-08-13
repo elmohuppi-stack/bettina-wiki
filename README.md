@@ -22,7 +22,7 @@ Erstellt mit ♥ von **Elmar** für **Bettina** – [github.com/elmohuppi-stack/
 
 ## Verwendung
 
-1. **`index.html`** doppelklicken → öffnet im Browser
+1. **`wiki.html`** doppelklicken → öffnet im Browser
 2. **Datenordner verbinden** – ⚙ Einstellungen → `📁 Datenordner wählen` (einmalig, siehe unten)
 3. **Neue Seite** – Button `+ Neue Seite` in der Seitenleiste
 4. **Bearbeiten** – ✏️-Button auf einer Seite oder Seitenlisten-Eintrag
@@ -31,7 +31,7 @@ Erstellt mit ♥ von **Elmar** für **Bettina** – [github.com/elmohuppi-stack/
 
 ## Datenspeicherung
 
-Die Logik steckt in `index.html`, die **Daten liegen in einer eigenen Datei**.
+Die Logik steckt in `wiki.html`, die **Daten liegen in einer eigenen Datei**.
 Beim ersten Start ist noch kein Datenordner verbunden – ein Banner weist darauf hin.
 Über ⚙ → `📁 Datenordner wählen` einen Ordner auswählen, danach schreibt das Wiki
 bei jeder Änderung dorthin:
@@ -45,11 +45,17 @@ bei jeder Änderung dorthin:
 ```
 
 **Warum nicht nur der Browser-Speicher?**
-`localStorage` hängt an der Browser-Origin. Bei `file://` reicht schon ein anderer
-Pfad oder Laufwerksbuchstabe, ein zurückgesetztes Windows-Profil (typisch bei
-Remote-Desktop / VDI) oder ein „Browserdaten löschen“, und alle Seiten sind weg.
+`localStorage` gehört dem Browser-Profil, nicht dir. Ein zurückgesetztes
+Windows-Profil (typisch bei Remote-Desktop / VDI), eine Richtlinie
+„Website-Daten beim Schließen löschen“, ein „Browserdaten löschen“ oder
+automatisches Aufräumen durch den Browser – und alle Seiten sind weg, ohne
+Vorwarnung und ohne Datei, die man hätte sichern können.
 Eine echte Datei übersteht das – und lässt sich sichern, kopieren und in einen
 Cloud-Ordner legen.
+
+(Der Dateiname und der Ablageort der `wiki.html` spielen dabei keine Rolle:
+Chromium behandelt alle `file://`-Seiten als eine gemeinsame Origin, der
+Browser-Speicher wandert also mit.)
 
 Empfehlung: einen Ordner in **OneDrive/Dropbox** wählen. Dann gibt es zusätzlich
 Versionierung und eine Kopie außerhalb des Rechners.
@@ -70,7 +76,7 @@ Wiki weiter aus dem Browser-Speicher und warnt sichtbar – hier bitte regelmä�
 
 ```
 bettina-wiki/
-├── index.html      ← Die gesamte Wiki-App (HTML + CSS + JS inline)
+├── wiki.html       ← Die gesamte Wiki-App (HTML + CSS + JS inline)
 └── README.md       ← Diese Datei
 ```
 

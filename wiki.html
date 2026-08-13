@@ -779,11 +779,13 @@
     //              (File System Access API — Chromium/Edge)
     //   Sekundär : localStorage als schneller Cache + Fallback
     //
-    // Warum: localStorage allein ist an die Browser-Origin gebunden.
-    // Bei file:// kann schon ein anderer Pfad/Laufwerksbuchstabe, ein
-    // zurückgesetztes Windows-Profil (RDP!) oder "Browserdaten löschen"
-    // alle Daten unsichtbar machen. Eine echte Datei auf der Platte
-    // übersteht das — und lässt sich sichern und kopieren.
+    // Warum: localStorage gehört dem Browser-Profil. Ein zurückgesetztes
+    // Windows-Profil (RDP!), eine Richtlinie "Website-Daten beim Schließen
+    // löschen" oder das Aufräumen durch den Browser löschen alles — ohne
+    // Vorwarnung und ohne Datei, die man hätte sichern können. Eine echte
+    // Datei auf der Platte übersteht das und lässt sich kopieren.
+    // (Der Pfad der HTML-Datei ist dabei egal: Chromium fasst alle
+    // file://-Seiten zu einer einzigen Origin zusammen.)
     // ═══════════════════════════════════════════
     const FS_OK = typeof window.showDirectoryPicker === "function";
     const DATA_FILE = "wiki-data.json";
@@ -1202,9 +1204,9 @@
     Bitte regelmäßig sichern — oder Microsoft Edge / Google Chrome verwenden.
     <div class=b-a><button class="btn btn-sm" onclick="expJson()">💾 Sicherung herunterladen</button></div></div>`;
       return `<div id=fsb><strong>⚠️ Noch kein Datenordner verbunden</strong>
-    Deine Seiten liegen nur im Browser-Speicher. Der kann verloren gehen — etwa
-    durch „Browserdaten löschen“, ein zurückgesetztes Windows-Profil oder wenn diese
-    Datei von einem anderen Pfad geöffnet wird. Verbinde einen Ordner, dann liegen
+    Deine Seiten liegen nur im Browser-Speicher. Der kann jederzeit verloren gehen —
+    durch „Browserdaten löschen“, ein zurückgesetztes Windows-Profil (etwa bei
+    Remote-Desktop) oder das Aufräumen durch den Browser. Verbinde einen Ordner, dann liegen
     alle Daten in einer echten Datei (<code>${DATA_FILE}</code>) samt täglicher Sicherung.
     <div class=b-a><button class="btn btn-sm" onclick="ST.connect()">📁 Datenordner wählen</button>
     <button class="btn btn-o btn-sm" onclick="expJson()">💾 Sicherung herunterladen</button></div></div>`;
@@ -2239,9 +2241,9 @@ Zusätzlich warnt dich der Browser, wenn du die Seite mit ungespeicherten Änder
 ## 🔒 Wo liegen meine Daten? (wichtig!)
 
 Ohne Datenordner liegen alle Seiten **nur im Browser-Speicher**. Der kann
-verschwinden – durch „Browserdaten löschen", ein zurückgesetztes Windows-Profil
-(z.B. bei Remote-Desktop) oder wenn diese Datei von einem anderen Pfad
-geöffnet wird.
+jederzeit verschwinden – durch „Browserdaten löschen", ein zurückgesetztes
+Windows-Profil (z.B. bei Remote-Desktop) oder wenn der Browser selbst aufräumt.
+Und zwar ohne Vorwarnung, weil es keine Datei gibt, die man hätte sichern können.
 
 Deshalb: **einmalig einen Datenordner verbinden.**
 Einstellungen (⚙) → **📁 Datenordner wählen**. Danach schreibt das Wiki alles in
